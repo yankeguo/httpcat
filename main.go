@@ -12,61 +12,88 @@ import (
 	"time"
 )
 
-var (
-	optPort         string
-	optResponseBody []byte
-	optResponseType string
-	optResponseCode int
-)
+type Options struct {
+	Port         string
+	ResponseBody []byte
+	ResponseType string
+	ResponseCode int
+}
 
-func init() {
-	optPort = os.Getenv("PORT")
-	if optPort == "" {
-		optPort = "80"
-	}
-	optResponseBody = []byte(os.Getenv("RESPONSE_BODY"))
-	if len(optResponseBody) == 0 {
-		optResponseBody = []byte("OK")
-	}
-	optResponseType = os.Getenv("RESPONSE_TYPE")
-	if optResponseType == "" {
-		optResponseType = "text/plain; charset=utf-8"
-	}
-	optResponseCode, _ = strconv.Atoi(os.Getenv("RESPONSE_CODE"))
-	if optResponseCode == 0 {
-		optResponseCode = http.StatusOK
-	}
+func envStr(key string) string {
+	return strings.TrimSpace(os.Getenv(key))
+}
+
+func envInt(key string) int {
+	v, _ := strconv.Atoi(envStr(key))
+	return v
 }
 
 func main() {
 	log.SetFlags(0)
 	log.SetOutput(os.Stdout)
 
-	count := uint64(0)
-	locker := &sync.Mutex{}
+	opts := Options{
+		Port:         envStr("PORT"),
+		ResponseBody: []byte(envStr("RESPONSE_BODY")),
+		ResponseType: envStr("RESPONSE_TYPE"),
+		ResponseCode: envInt("RESPONSE_CODE"),
+	}
+
+	if opts.Port == "" {
+		opts.Port = "80"
+	}
+	if len(opts.ResponseBody) == 0 {
+		opts.ResponseBody = []byte("OK")
+	}
+	if opts.ResponseType == "" {
+		opts.ResponseType = "text/plain; charset=utf-8"
+	}
+	if opts.ResponseCode == 0 {
+		opts.ResponseCode = http.StatusOK
+	}
+
+	var (
+		id   = uint64(0)
+		lock = &sync.Mutex{}
+	)
 
 	http.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
-		locker.Lock()
-		defer locker.Unlock()
-		count++
+		lock.Lock()
+		defer lock.Unlock()
 
-		// request id
-		title := fmt.Sprintf("================== %s ==== #%d ==================", time.Now().Format(time.RFC3339), count)
-		log.Printf(title)
-		// proto / method / url
-		log.Println("")
+		// increase id
+		id++
+
+		// print start line
+		log.Println()
+		startLine := fmt.Sprintf(
+			"================== %s ==== #%d ==================",
+			time.Now().Format(time.RFC3339),
+			id,
+		)
+		log.Printf(startLine)
+
+		// print stop line
+		stopLine := make([]byte, len(startLine), len(startLine))
+		for i := range stopLine {
+			stopLine[i] = '='
+		}
+		defer log.Println(string(stopLine))
+
+		// print proto / method / url
+		log.Println()
 		log.Printf("%s %s %s", req.Proto, req.Method, req.URL.String())
-		// headers
-		log.Println("")
-		// fix for golang Host header
+		// print headers
+		log.Println()
 		log.Printf("Host: %s", req.Host)
 		for k, vs := range req.Header {
 			for _, v := range vs {
 				log.Printf("%s: %s", k, v)
 			}
 		}
-		// body
-		log.Println("")
+
+		// print body
+		log.Println()
 		br := bufio.NewReader(req.Body)
 		for {
 			line, err := br.ReadString('\n')
@@ -75,19 +102,14 @@ func main() {
 				break
 			}
 		}
-		endLine := &strings.Builder{}
-		for range title {
-			endLine.WriteRune('=')
-		}
-		log.Println(endLine.String())
 
-		// response with OK
-		rw.Header().Set("Content-Type", optResponseType)
-		rw.Header().Set("Content-Length", strconv.Itoa(len(optResponseBody)))
-		rw.WriteHeader(optResponseCode)
-		_, _ = rw.Write(optResponseBody)
+		// response
+		rw.Header().Set("Content-Type", opts.ResponseType)
+		rw.Header().Set("Content-Length", strconv.Itoa(len(opts.ResponseBody)))
+		rw.WriteHeader(opts.ResponseCode)
+		_, _ = rw.Write(opts.ResponseBody)
 	})
 
-	log.Printf("listening at %s", optPort)
-	log.Fatal(http.ListenAndServe(":"+optPort, nil))
+	log.Println("Listening at", opts.Port)
+	log.Fatal(http.ListenAndServe(":"+opts.Port, nil))
 }
