@@ -2,7 +2,9 @@
 
 An HTTP debug tool that prints details of incoming HTTP requests
 
-## Env
+![screenshot](screenshot.png)
+
+## Environment Variables
 
 * `PORT` port to listen, default to `80`
 * `RESPONSE_CODE` response code, default to `200`
