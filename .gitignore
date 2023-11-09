@@ -16,3 +16,8 @@
 
 # GoLand
 .idea/
+
+
+# Added by cargo
+
+/target
