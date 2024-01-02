@@ -7,8 +7,8 @@ HTTP 调试工具，充当一个 HTTP Server 并打印所有请求的细节
 ## 镜像地址
 
 ```
-guoyk/httpcat
-ghcr.io/guoyk93/httpcat
+yankeguo/httpcat
+ghcr.io/yankeguo/httpcat
 ```
 
 ## 环境变量

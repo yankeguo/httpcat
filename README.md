@@ -7,8 +7,8 @@ An HTTP debug tool that prints details of incoming HTTP requests
 ## Image
 
 ```
-guoyk/httpcat
-ghcr.io/guoyk93/httpcat
+yankeguo/httpcat
+ghcr.io/yankeguo/httpcat
 ```
 
 ## Environment Variables
@@ -17,10 +17,6 @@ ghcr.io/guoyk93/httpcat
 - `RESPONSE_CODE` response code, default to `200`
 - `RESPONSE_TYPE` response content type, default to `text/plain; charset=utf-8`
 - `RESPONSE_BODY` response body, default to `OK`
-
-## Donation
-
-View https://guoyk.xyz/donation
 
 ## Credits
 
