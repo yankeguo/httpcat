@@ -1,7 +1,8 @@
 FROM ghcr.io/rust-cross/rust-musl-cross:x86_64-musl AS builder
 WORKDIR /workspace
 COPY . .
-RUN cargo build --release && \
+RUN rustup target add x86_64-unknown-linux-musl && \
+    cargo build --release && \
     musl-strip target/x86_64-unknown-linux-musl/release/httpcat
 
 FROM scratch

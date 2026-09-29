@@ -1,13 +1,19 @@
+use bytes::Bytes;
 use chrono::prelude::*;
-use hyper::body::HttpBody;
+use http_body::Body;
+use http_body_util::{BodyExt, Full};
+use hyper::body::Incoming;
 use hyper::header::HeaderValue;
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Request, Response, Server, StatusCode};
+use hyper::service::service_fn;
+use hyper::{Request, Response, StatusCode};
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto::Builder;
 use std::convert::Infallible;
 use std::env;
 use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 
 struct State {
@@ -17,7 +23,10 @@ struct State {
     id: Mutex<i32>,
 }
 
-async fn serve_request(state: Arc<State>, req: Request<Body>) -> Result<Response<Body>, Infallible> {
+async fn serve_request(
+    state: Arc<State>,
+    req: Request<Incoming>,
+) -> Result<Response<Full<Bytes>>, Infallible> {
     // request id
     let mut request_id = state.id.lock().await;
     *request_id += 1;
@@ -37,20 +46,14 @@ async fn serve_request(state: Arc<State>, req: Request<Body>) -> Result<Response
     if upper > 1024 * 64 {
         println!("Body: {} bytes", upper);
     } else {
-        let full_body = hyper::body::to_bytes(req.into_body()).await;
-        match full_body {
-            Ok(full_body) => {
-                println!("{}", String::from_utf8_lossy(&full_body));
-            }
-            Err(_) => {}
+        if let Ok(full_body) = req.into_body().collect().await {
+            println!("{}", String::from_utf8_lossy(&full_body.to_bytes()));
         }
     }
-    println!(
-        "======================================================================="
-    );
+    println!("=======================================================================");
 
     // response
-    let mut res: Response<Body> = Response::new(Body::from(state.body.clone()));
+    let mut res = Response::new(Full::new(Bytes::from(state.body.clone())));
     *res.status_mut() = state.code;
     match &state.content_type {
         None => {}
@@ -60,7 +63,7 @@ async fn serve_request(state: Arc<State>, req: Request<Body>) -> Result<Response
         }
     }
 
-    Ok::<_, Infallible>(res)
+    Ok(res)
 }
 
 #[tokio::main]
@@ -74,7 +77,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .unwrap_or("text/plain; charset=utf-8".to_string())
                 .as_str(),
         )
-            .ok(),
+        .ok(),
         code: StatusCode::from_u16(
             env::var("RESPONSE_CODE")
                 .unwrap_or("200".to_string())
@@ -87,24 +90,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("listening at {}", port);
 
-    let make_svc = make_service_fn(move |_conn| {
+    let listener = TcpListener::bind(addr).await?;
+    let builder = Builder::new(TokioExecutor::new());
+
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let io = TokioIo::new(stream);
         let state = state.clone();
-        async move {
-            Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
+        let builder = builder.clone();
+
+        tokio::spawn(async move {
+            let service = service_fn(move |req| {
                 let state = state.clone();
+                serve_request(state, req)
+            });
 
-                async move {
-                    return serve_request(state, req).await;
-                }
-            }))
-        }
-    });
-
-    let server = Server::bind(&addr).serve(make_svc);
-
-    if let Err(e) = server.await {
-        eprintln!("server error: {}", e);
+            if let Err(e) = builder.serve_connection(io, service).await {
+                eprintln!("server error: {}", e);
+            }
+        });
     }
-
-    Ok(())
 }
